@@ -34,8 +34,6 @@ namespace PnWatcher.Lib
         public ObservableFileSystemWatcher(FileSystemWatcher watcher)
         {
             Watcher = watcher;
-
-            
         }
 
         /// <summary>

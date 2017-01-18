@@ -1,9 +1,13 @@
 ﻿using Ninject;
+using Ninject.Parameters;
 using System;
 using System.IO;
 using System.Reactive.Linq;
 using System.Security.AccessControl;
+using System.Threading;
 using System.Threading.Tasks;
+using System.Linq;
+using Ninject.Extensions.Logging;
 
 namespace PnWatcher.Lib
 {
@@ -14,12 +18,15 @@ namespace PnWatcher.Lib
         IObservableFileSystemWatcher Watcher { get; }
         void Start();
         void Stop();
-
+        void inspect();
     }
     public class PnFileWatcher : IPnFileWatcher, IInitializable
     {
         private readonly string path;
-        private readonly IObservableFileSystemWatcher watcher;
+        private  IObservableFileSystemWatcher watcher;
+        private readonly bool allowMoveFile;
+        private readonly bool inspectExisting;
+        private readonly string extension;
 
         public event EventHandler<PnFileWatcherEventArgs> onActionException;
         public event EventHandler<PnFileWatcherEventArgs> onAction;
@@ -27,12 +34,18 @@ namespace PnWatcher.Lib
         public IObservable<string> Action { get; private set; }
 
         [Inject]
-        public PnFileWatcher(string path)
+        public PnFileWatcher(string path,string extension,bool allowMoveFile,bool inspectExisting)
         {
             this.path = path;
-            watcher = new ObservableFileSystemWatcher(c => { c.Path = path; c.IncludeSubdirectories = false; });
+            this.extension = extension;
+            this.allowMoveFile = allowMoveFile;
+            this.inspectExisting = inspectExisting;
         }
+        [Inject]
+        public IKernel Kernel { get; set; }
 
+        [Inject]
+        public ILogger Logger { get; set; }
 
         public IObservableFileSystemWatcher Watcher => watcher;
         public void Dispose()
@@ -42,48 +55,95 @@ namespace PnWatcher.Lib
 
         public void Initialize()
         {
-            watcher.Created.Subscribe(file => MoveFile(file));
-
+            Action<FileSystemWatcher> configure = c => { c.Path = path;c.Filter = this.extension; c.IncludeSubdirectories = false; };
+            watcher = Kernel.Get<IObservableFileSystemWatcher>(new ConstructorArgument("configure", configure));
+            watcher.Created.Subscribe(file => MoveFile(file.FullPath));
+            watcher.StatusChanged.Subscribe(status =>
+            {
+                if (status && inspectExisting) inspect();
+            });
             ActionException = Observable.FromEventPattern<PnFileWatcherEventArgs>(
                     evt => this.onActionException += evt,
                     evt => this.onActionException -= evt
                 ).Select(x => x.EventArgs.Exception);
+
             Action = Observable.FromEventPattern<PnFileWatcherEventArgs>(
                     evt => this.onActionException += evt,
                     evt => this.onActionException -= evt
                 ).Select(x => x.EventArgs.Message);
-            
 
+           
         }
         public void Start() { watcher.Start(); }
         public void Stop() { watcher.Stop(); }
-        private void MoveFile(FileSystemEventArgs file)
+        private void MoveFile(string filename)
         {
             Task.Factory.StartNew(() =>
             {
+                Thread.Sleep(2000);
                 try
                 {
-                    string filename = file.Name;
                     var name = Path.GetFileNameWithoutExtension(filename);
-                    var sNumber = name.Substring(0, name.Length - 3);
-                    var iNumber = (int)(Int32.Parse(sNumber) / 1000);
+                    var pathDest = getPathDestination(filename);
+                    if (this.allowMoveFile)
+                    {
 
-                    var pathDest = Path.Combine(path, iNumber.ToString());
-                    if (!Directory.Exists(pathDest))
-                        Directory.CreateDirectory(pathDest);
-                    File.Move(file.FullPath, Path.Combine(pathDest, filename));
-                    onAction(this, new PnFileWatcherEventArgs(this, String.Format("Le fichier %s a été déplacé vers %s", filename, pathDest)));
+                        if (!Directory.Exists(pathDest))
+                        {
+                            Directory.CreateDirectory(pathDest);
+                            sendAction(String.Format("Creation du répertoire %s",  pathDest));
+                        }
+                        var fileDest = getFileDestination(name);
+                        if (File.Exists(fileDest))
+                        {
+                            File.Delete(fileDest);
+                            sendAction(String.Format("Suppression du fichier existant %s avant copie", fileDest));
+                        }
+                        File.Move(filename, fileDest);
+                    }
+                    sendAction( String.Format("Le fichier %s a été déplacé vers %s", filename, pathDest));
                 }
                 catch (Exception ex)
                 {
-                    onActionException(this, new PnFileWatcherEventArgs(this, ex));
+                    sendException(ex);
+                    
                 }
 
             });
 
         }
 
+        private void sendAction(string message)
+        {
+            onAction(this, new PnFileWatcherEventArgs(this, message));
+            Logger.Debug(message);
+        }
 
+        private void sendException(Exception ex)
+        {
+            onActionException(this, new PnFileWatcherEventArgs(this, ex));
+            Logger.ErrorException("Erreur", ex);
+        }
+
+        private string getPathDestination(string name)
+        {
+            
+            var sNumber = name.Substring(0, name.Length - 3);
+            var iNumber = (int)(Int32.Parse(sNumber) / 1000);
+            return  Path.Combine(path, iNumber.ToString());
+        }
+
+        private string  getFileDestination(string name)
+        {
+            return Path.Combine(getPathDestination(name), name + this.extension);
+        }
+
+        public void inspect()
+        {
+            sendAction(String.Format("Inspection des fichiers existant dans %s", path));
+            var files=Directory.EnumerateFiles(path, this.extension);
+            files.ToList().ForEach(file => MoveFile(file));
+        }
     }
 
 }
