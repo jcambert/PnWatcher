@@ -68,8 +68,8 @@ namespace PnWatcher.Lib
                 ).Select(x => x.EventArgs.Exception);
 
             Action = Observable.FromEventPattern<PnFileWatcherEventArgs>(
-                    evt => this.onActionException += evt,
-                    evt => this.onActionException -= evt
+                    evt => this.onAction+= evt,
+                    evt => this.onAction -= evt
                 ).Select(x => x.EventArgs.Message);
 
            
@@ -84,24 +84,24 @@ namespace PnWatcher.Lib
                 try
                 {
                     var name = Path.GetFileNameWithoutExtension(filename);
-                    var pathDest = getPathDestination(filename);
+                    var pathDest = getPathDestination(name);
                     if (this.allowMoveFile)
                     {
 
                         if (!Directory.Exists(pathDest))
                         {
                             Directory.CreateDirectory(pathDest);
-                            sendAction(String.Format("Creation du répertoire %s",  pathDest));
+                            sendAction(String.Format("Creation du répertoire {0}",  pathDest));
                         }
                         var fileDest = getFileDestination(name);
                         if (File.Exists(fileDest))
                         {
                             File.Delete(fileDest);
-                            sendAction(String.Format("Suppression du fichier existant %s avant copie", fileDest));
+                            sendAction(String.Format("Suppression du fichier existant {0} avant copie", fileDest));
                         }
                         File.Move(filename, fileDest);
                     }
-                    sendAction( String.Format("Le fichier %s a été déplacé vers %s", filename, pathDest));
+                    sendAction( String.Format("Le fichier {0} a été déplacé vers {1}", filename, pathDest));
                 }
                 catch (Exception ex)
                 {
@@ -129,18 +129,18 @@ namespace PnWatcher.Lib
         {
             
             var sNumber = name.Substring(0, name.Length - 3);
-            var iNumber = (int)(Int32.Parse(sNumber) / 1000);
+            var iNumber = (int)(Int32.Parse(sNumber) / 1000)*1000;
             return  Path.Combine(path, iNumber.ToString());
         }
 
         private string  getFileDestination(string name)
         {
-            return Path.Combine(getPathDestination(name), name + this.extension);
+            return Path.Combine(getPathDestination(name), name + this.extension.Replace("*",""));
         }
 
         public void inspect()
         {
-            sendAction(String.Format("Inspection des fichiers existant dans %s", path));
+            sendAction(String.Format("Inspection des fichiers existant dans {0}", path));
             var files=Directory.EnumerateFiles(path, this.extension);
             files.ToList().ForEach(file => MoveFile(file));
         }

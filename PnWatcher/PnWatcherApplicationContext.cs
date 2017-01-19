@@ -26,7 +26,7 @@ namespace PnWatcher
         private void setCloseEvent(Form frm)
         {
             if (frm == null) ExitThread();
-            Closed = Observable.FromEvent<FormClosedEventHandler, FormClosedEventArgs>(
+            Closed = Observable.FromEventPattern<FormClosedEventHandler, FormClosedEventArgs>(
                     evt => frm.FormClosed += evt,
                     evt => frm.FormClosed -= evt
                     );
@@ -62,7 +62,7 @@ namespace PnWatcher
             else
             {
                 frm = Kernel.Get<MainForm>(new ConstructorArgument("path", CommandLine.Object.Path));
-                frm.Text = string.Format("PN File Watcher %s", CommandLine.Object.Path);
+                frm.Text = string.Format("PN File Watcher {0}", CommandLine.Object.Path);
             }
             setCloseEvent(frm);
             frm.Show();
@@ -71,6 +71,6 @@ namespace PnWatcher
         [Inject]
         public IKernel Kernel { get; set; }
 
-        public IObservable<FormClosedEventArgs> Closed { get; private set; }
+        public IObservable<EventPattern< FormClosedEventArgs>> Closed { get; private set; }
     }
 }

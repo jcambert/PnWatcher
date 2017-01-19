@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 
 namespace PnWatcher.Lib
@@ -35,7 +36,7 @@ namespace PnWatcher.Lib
 
         public  static int CountLine(this string lines)
         {
-            return lines.Split('\n').Count();
+            return  Regex.Split(lines, "\r\n").Count();
         }
 
         public static string RemoveLines(this string lines,int max, Sens sens)
